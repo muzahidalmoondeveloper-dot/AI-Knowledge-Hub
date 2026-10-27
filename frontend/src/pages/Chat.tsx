@@ -12,11 +12,11 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import { api, streamChat } from "../api";
 import type { Message, Row } from "../types";
 import { useWorkspace } from "../context";
 import { Badge, ErrorText } from "../components/ui";
+import { MessageMarkdown } from "../components/MessageMarkdown";
 
 export function Chat() {
   const { id } = useParams();
@@ -331,21 +331,10 @@ export function Chat() {
                   {m.role === "user" ? "You" : bot?.name || "Assistant"}
                 </strong>
                 {m.content ? (
-                  bot?.strict_rag && m.role === "assistant" ? (
-                    <div className="extract-text">{m.content}</div>
+                  m.role === "assistant" ? (
+                    <MessageMarkdown content={m.content} />
                   ) : (
-                    <ReactMarkdown
-                      disallowedElements={["img"]}
-                      components={{
-                        a: ({ children, href }) => (
-                          <a href={href} target="_blank" rel="noreferrer">
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
+                    <div className="extract-text">{m.content}</div>
                   )
                 ) : (
                   <span className="thinking">Searching and thinking…</span>

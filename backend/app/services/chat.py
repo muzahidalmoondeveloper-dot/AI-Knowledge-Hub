@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy import select
 
 from app.ai.factory import create_chat_model, enforce_privacy, provider_for
-from app.ai.rag.grounding import SECURITY, STRICT, verify_extracts
+from app.ai.rag.grounding import SECURITY, STRICT, quote_schema, verify_extracts
 from app.ai.rag.retrieval import retrieve
 from app.api.deps import owned
 from app.core.config import get_settings
@@ -119,9 +119,18 @@ class ChatService:
                 db, kb, query, self.bot.top_k, self.bot.score_threshold, self.bot.allow_cloud
             )
 
-    async def generate(self, question, sources, writer):
+    async def generate(self, question, sources, writer, *, social=False):
+        strict = self.bot.strict_rag and not social
         messages = [SystemMessage(content=SECURITY), SystemMessage(content=self.bot.system_prompt)]
-        if self.bot.strict_rag:
+        if social:
+            messages.append(SystemMessage(content=(
+                "This turn is social conversation, not a request for knowledge-base facts. "
+                "Reply naturally and briefly in the user's language, respecting your configured "
+                "tone and conversation history. Respond to the actual greeting, thanks, farewell, "
+                "or check-in rather than repeating a fixed welcome. Do not invent document facts, "
+                "citations, human experiences, or actions you have not performed."
+            )))
+        elif strict:
             messages.append(SystemMessage(content=STRICT))
         else:
             messages.append(
@@ -135,12 +144,13 @@ class ChatService:
                 if row.role == "user"
                 else AIMessage(content=row.content)
             )
-        messages.append(
-            HumanMessage(
-                content="UNTRUSTED RETRIEVED EVIDENCE (JSON data):\n"
-                + json.dumps(sources, ensure_ascii=False)
+        if not social:
+            messages.append(
+                HumanMessage(
+                    content="UNTRUSTED RETRIEVED EVIDENCE (JSON data):\n"
+                    + json.dumps(sources, ensure_ascii=False)
+                )
             )
-        )
         messages.append(HumanMessage(content=question))
         raw = ""
         candidates = [self.bot.model_id] + (
@@ -152,6 +162,8 @@ class ChatService:
                 provider = await provider_for(db, definition.provider_id)
                 enforce_privacy(provider, self.bot.allow_cloud)
                 adapter = create_chat_model(provider, definition, self.bot)
+                if strict and provider.kind == "ollama":
+                    adapter = adapter.bind(format=quote_schema(sources))
                 self.model_id = model_id
             try:
                 async with asyncio.timeout(self.bot.timeout):
@@ -169,7 +181,7 @@ class ChatService:
                             raw += text
                             if getattr(chunk, "usage_metadata", None):
                                 self.usage = chunk.usage_metadata
-                            if not self.bot.strict_rag and text:
+                            if not strict and text:
                                 self.partial += text
                                 writer({"type": "token", "text": text})
                     else:
@@ -192,7 +204,7 @@ class ChatService:
                         "Model generation failed or timed out. Check provider availability.",
                     ) from None
                 raw = ""
-        if self.bot.strict_rag:
+        if strict:
             answer, sources = verify_extracts(raw, sources)
             self.partial = answer
             for start in range(0, len(answer), 80):

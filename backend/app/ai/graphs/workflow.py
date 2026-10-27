@@ -2,6 +2,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.ai.graphs.nodes import build_nodes
 from app.ai.graphs.state import ChatState
+from app.ai.greetings import is_social_turn
 
 
 def build_graph(service, checkpointer):
@@ -9,9 +10,16 @@ def build_graph(service, checkpointer):
     for name, node in build_nodes(service).items():
         graph.add_node(name, node)
     graph.add_edge(START, "load_settings")
+    graph.add_edge("load_settings", "load_context")
+    graph.add_conditional_edges(
+        "load_context",
+        lambda state: "greeting"
+        if service.bot.strict_rag and is_social_turn(state["question"])
+        else "prepare_query",
+        {"greeting": "greeting", "prepare_query": "prepare_query"},
+    )
+    graph.add_edge("greeting", "prepare_sources")
     for start, end in [
-        ("load_settings", "load_context"),
-        ("load_context", "prepare_query"),
         ("prepare_query", "retrieve"),
         ("retrieve", "check_evidence"),
     ]:

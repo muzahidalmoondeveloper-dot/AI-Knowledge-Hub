@@ -12,6 +12,12 @@ def build_nodes(service):
         await service.load_history()
         return {}
 
+    async def greeting(state):
+        answer, sources = await service.generate(
+            state["question"], [], get_stream_writer(), social=True
+        )
+        return {"answer": answer, "sources": sources}
+
     async def prepare_query(state):
         return {"query": service.retrieval_query(state["question"])}
 
@@ -42,6 +48,7 @@ def build_nodes(service):
     return {
         "load_settings": load_settings,
         "load_context": load_context,
+        "greeting": greeting,
         "prepare_query": prepare_query,
         "retrieve": retrieve_knowledge,
         "check_evidence": check_evidence,

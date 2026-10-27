@@ -45,7 +45,7 @@ it("keeps the first streamed response when creating and navigating to a conversa
       await new Promise((resolve) => setTimeout(resolve, 20));
       onEvent({
         type: "token",
-        text: "Employees receive twenty days of leave.",
+        text: "**Employees receive twenty days of leave.**",
       });
       onEvent({ type: "done", sources: [] });
     },
@@ -89,6 +89,9 @@ it("keeps the first streamed response when creating and navigating to a conversa
     ).toBeTruthy(),
   );
   expect(screen.getByText("How much annual leave?")).toBeTruthy();
+  expect(
+    screen.getByText("Employees receive twenty days of leave.").tagName,
+  ).toBe("STRONG");
   expect(streamChat).toHaveBeenCalledWith(
     "new-conversation",
     "How much annual leave?",
